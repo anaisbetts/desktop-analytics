@@ -1,4 +1,5 @@
-﻿using Microsoft.VisualBasic.Devices;
+﻿using Akavache;
+using Microsoft.VisualBasic.Devices;
 using SharpRaven;
 using SharpRaven.Data;
 using SharpRaven.Logging;
@@ -7,7 +8,10 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Globalization;
+using System.Linq;
+using System.Reactive.Threading.Tasks;
 using System.Reflection;
+using System.Text;
 using System.Threading.Tasks;
 
 namespace BanjoPancake.Analytics
@@ -17,42 +21,43 @@ namespace BanjoPancake.Analytics
         public static bool IsDebugMode => sentryKey == null;
         static string sentryKey;
 
-        public static void Register(IMutableDependencyResolver resolver, string sentryKeyOrNullForDebugMode, Action<string, string> fillInOSDependentInfo)
+        public static void Register(IMutableDependencyResolver resolver, string sentryKeyOrNullForDebugMode, ISecureBlobCache secureBlobCache = null)
         {
             sentryKey = sentryKeyOrNullForDebugMode;
 
+            var logger = default(ILogger);
+            var reporter = default(IRavenClient);
+
             if (IsDebugMode) {
-                IRavenClient reporter = new DummyClient();
-                var logger = new DebugLogger();
+                reporter = new DummyClient();
+                logger = new DebugLogger();
                 logger.Level = LogLevel.Info;
             } else {
-                var userFactory = new UniqueSentryUserFactory();
-                IRavenClient reporter = new RavenClient("https://08e38cda1d2e4aba8b35cb16a968360c:075db9f542464f06bcd9a80576a915b2@sentry.io/186611", sentryUserFactory: userFactory);
-                var logger = new SentryLogger(reporter);
+                var userFactory = new UniqueSentryUserFactory(secureBlobCache);
+                reporter = new RavenClient(sentryKeyOrNullForDebugMode, sentryUserFactory: userFactory);
+                logger = new SentryLogger(reporter);
                 logger.Level = LogLevel.Info;
 
+                reporter.Compression = true;
+                reporter.Release = Assembly.GetEntryAssembly().GetName().Version.ToString();
             }
+
+            resolver.RegisterConstant(logger, typeof(ILogger));
+            resolver.RegisterConstant(reporter, typeof(IRavenClient));
         }
 
-        static Dictionary<string, string> collectStaticSystemInformation(Action<Dictionary<string, string>> fillInOSDependentInfo)
+        public static Dictionary<string, string> CollectStaticSystemInformation(Action<Dictionary<string, string>> fillInOSDependentInfo)
         {
             var ret = new Dictionary<string, string>();
 
             ret["Culture"] = CultureInfo.CurrentUICulture.ThreeLetterISOLanguageName;
-            ret["AppArchitecture"] = Diagnostics.AppArchitecture;
-            ret["ClrVersion"] = Diagnostics.ClrVersion;
-            ret["DetectedOSVersion"] = Diagnostics.DetectedOSVersion.Value;
-            ret["OSArchitecture"] = Diagnostics.OSArchitecture;
-            ret["ProcessorCount"] = Diagnostics.ProcessorCount;
-            ret["ServicePack"] = Diagnostics.ServicePack;
-            ret["AppArchitecture"] = Diagnostics.AppArchitecture;
-            ret["FullOSVersion"] = Diagnostics.FullOSVersion.Value;
             ret["AssemblyVersion"] = Assembly.GetExecutingAssembly().GetName().Version.ToString();
+            fillInOSDependentInfo(ret);
 
             return ret;
         }
 
-        static Dictionary<string, string> collectDynamicSystemInformation(Dictionary<string, string> staticSystemInfo)
+        public static Dictionary<string, string> CollectDynamicSystemInformation(Dictionary<string, string> staticSystemInfo)
         {
             var ret = staticSystemInfo;
             var ci = new ComputerInfo();
@@ -144,6 +149,43 @@ namespace BanjoPancake.Analytics
         {
             if (logLevel < Level) return;
             Sentry.AddTrail(new Breadcrumb("log") { Message = message, Level = toBreadcrumbLevel(logLevel) });
+        }
+    }
+
+    public class UniqueSentryUserFactory : ISentryUserFactory
+    {
+        readonly ISentryUserFactory innerFactory = new SentryUserFactory();
+        ISecureBlobCache secureCache;
+
+        public UniqueSentryUserFactory(ISecureBlobCache secureCache = null)
+        {
+            this.secureCache = secureCache;
+        }
+
+        public SentryUser Create()
+        {
+            // NB: We have to call this way later because at the time we create the reporter,
+            // we haven't initialized Akavache yet.
+            this.secureCache = this.secureCache ?? Locator.Current.GetService<ISecureBlobCache>();
+            var user = innerFactory.Create();
+
+            var slugInfo = secureCache.GetOrCreateObject("slugInfo", () => {
+                var prng = new Random();
+
+                var data = new byte[8];
+                prng.NextBytes(data);
+                var slug = data.Aggregate(new StringBuilder(), (acc, x) => {
+                    acc.Append(x.ToString("x2"));
+                    return acc;
+                });
+
+                return new Dictionary<string, string> {
+                    { "Slug", slug.ToString() }
+                };
+            }).ToTask().Result;
+
+            user.Username = $"{user.Username}_{slugInfo["Slug"]}";
+            return user;
         }
     }
 }
