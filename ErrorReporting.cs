@@ -31,12 +31,12 @@ namespace BanjoPancake.Analytics
             if (IsDebugMode) {
                 reporter = new DummyClient();
                 logger = new DebugLogger();
-                logger.Level = LogLevel.Info;
+                ((DebugLogger)logger).Level = LogLevel.Info;
             } else {
                 var userFactory = new UniqueSentryUserFactory(secureBlobCache);
                 reporter = new RavenClient(sentryKeyOrNullForDebugMode, sentryUserFactory: userFactory);
                 logger = new SentryLogger(reporter);
-                logger.Level = LogLevel.Info;
+                ((SentryLogger)logger).Level = LogLevel.Info;
 
                 reporter.Compression = true;
                 reporter.Release = Assembly.GetEntryAssembly().GetName().Version.ToString();
