@@ -106,23 +106,14 @@ namespace BanjoPancake.Analytics
 
         public SentryLogger(IRavenClient client = null) => (Sentry) = client ?? Locator.Current.GetService<IRavenClient>();
 
-        static BreadcrumbLevel toBreadcrumbLevel(LogLevel level)
-        {
-            switch (level) {
-            case LogLevel.Debug:
-                return BreadcrumbLevel.Debug;
-            case LogLevel.Error:
-                return BreadcrumbLevel.Error;
-            case LogLevel.Fatal:
-                return BreadcrumbLevel.Critical;
-            case LogLevel.Info:
-                return BreadcrumbLevel.Info;
-            case LogLevel.Warn:
-                return BreadcrumbLevel.Warning;
-            }
-
-            throw new Exception("Unknown Log Level");
-        }
+        static BreadcrumbLevel toBreadcrumbLevel(LogLevel level) =>  level switch {
+            LogLevel.Debug => BreadcrumbLevel.Debug,
+            LogLevel.Error => BreadcrumbLevel.Error,
+            LogLevel.Fatal => BreadcrumbLevel.Critical,
+            LogLevel.Info => BreadcrumbLevel.Info,
+            LogLevel.Warn => BreadcrumbLevel.Warning,
+            _ => throw new Exception("Unknown Log Level"),
+        };
 
         public void Write([Localizable(false)] string message, LogLevel logLevel)
         {
