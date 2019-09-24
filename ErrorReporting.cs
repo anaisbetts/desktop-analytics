@@ -104,10 +104,7 @@ namespace BanjoPancake.Analytics
         public LogLevel Level { get; set; }
         public IRavenClient Sentry { get; private set; }
 
-        public SentryLogger(IRavenClient client = null)
-        {
-            Sentry = client ?? Locator.Current.GetService<IRavenClient>();
-        }
+        public SentryLogger(IRavenClient client = null) => (Sentry) = client ?? Locator.Current.GetService<IRavenClient>();
 
         static BreadcrumbLevel toBreadcrumbLevel(LogLevel level)
         {
@@ -157,10 +154,7 @@ namespace BanjoPancake.Analytics
         readonly ISentryUserFactory innerFactory = new SentryUserFactory();
         ISecureBlobCache secureCache;
 
-        public UniqueSentryUserFactory(ISecureBlobCache secureCache = null)
-        {
-            this.secureCache = secureCache;
-        }
+        public UniqueSentryUserFactory(ISecureBlobCache secureCache = null) => (this.secureCache) = secureCache;
 
         public SentryUser Create()
         {
