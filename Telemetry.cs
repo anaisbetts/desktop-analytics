@@ -23,10 +23,7 @@ namespace BanjoPancake.Analytics
 
                 resolver.RegisterConstant(tc, typeof(TelemetryClient));
 
-                tc.Context.Session.Id = Guid.NewGuid().ToString();
-                tc.Context.Device.OperatingSystem = Environment.OSVersion.ToString();
-
-                foreach (var kvp in staticSystemInfo) { tc.Context.Properties[kvp.Key] = kvp.Value; }
+                foreach (var kvp in staticSystemInfo) { tc.Context.GlobalProperties[kvp.Key] = kvp.Value; }
 
                 analytics = new LiveAnalyticsSink();
 
