@@ -27,7 +27,7 @@ namespace BanjoPancake.Analytics
 
                 analytics = new LiveAnalyticsSink();
 
-                var userFactory = new UniqueSentryUserFactory();
+                var userFactory = UniqueSentryUserFactory.Current;
                 tc.Context.User.Id = userFactory.Create().Username;
             } else {
                 analytics = new LoggerAnalyticsSink();

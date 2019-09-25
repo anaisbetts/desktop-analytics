@@ -21,7 +21,7 @@ namespace BanjoPancake.Analytics
         public static bool IsDebugMode => sentryKey == null;
         static string sentryKey;
 
-        public static void Register(IMutableDependencyResolver resolver, string sentryKeyOrNullForDebugMode, ISecureBlobCache secureBlobCache = null)
+        public static void Register(IMutableDependencyResolver resolver, string sentryKeyOrNullForDebugMode = null)
         {
             sentryKey = sentryKeyOrNullForDebugMode;
 
@@ -33,7 +33,7 @@ namespace BanjoPancake.Analytics
                 logger = new DebugLogger();
                 ((DebugLogger)logger).Level = LogLevel.Info;
             } else {
-                var userFactory = new UniqueSentryUserFactory(secureBlobCache);
+                var userFactory = UniqueSentryUserFactory.Current;
                 reporter = new RavenClient(sentryKeyOrNullForDebugMode, sentryUserFactory: userFactory);
                 logger = new SentryLogger(reporter);
                 ((SentryLogger)logger).Level = LogLevel.Info;
@@ -143,15 +143,23 @@ namespace BanjoPancake.Analytics
     public class UniqueSentryUserFactory : ISentryUserFactory
     {
         readonly ISentryUserFactory innerFactory = new SentryUserFactory();
-        ISecureBlobCache secureCache;
+        IReadonlyDependencyResolver resolver;
 
-        public UniqueSentryUserFactory(ISecureBlobCache secureCache = null) => (this.secureCache) = secureCache;
+        static readonly Lazy<UniqueSentryUserFactory> _Current = new Lazy<UniqueSentryUserFactory>(() => new UniqueSentryUserFactory());
+        public static UniqueSentryUserFactory Current => _Current.Value;
 
+        UniqueSentryUserFactory() { }
+
+        SentryUser cachedUser;
         public SentryUser Create()
         {
+            if (cachedUser != null) return cachedUser;
+
             // NB: We have to call this way later because at the time we create the reporter,
             // we haven't initialized Akavache yet.
-            this.secureCache = this.secureCache ?? Locator.Current.GetService<ISecureBlobCache>();
+            resolver = resolver ?? Locator.Current;
+
+            var secureCache = resolver.GetService<ISecureBlobCache>();
             var user = innerFactory.Create();
 
             var slugInfo = secureCache.GetOrCreateObject("slugInfo", () => {
@@ -170,7 +178,7 @@ namespace BanjoPancake.Analytics
             }).ToTask().Result;
 
             user.Username = $"{user.Username}_{slugInfo["Slug"]}";
-            return user;
+            return (cachedUser = user);
         }
     }
 }
